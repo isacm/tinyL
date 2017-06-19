@@ -229,36 +229,3 @@ parseFile f = do {
             Left e -> print e >> fail "Parse Error"
             Right r -> return r
 }
-
-{-
-
---pre = reserved' "pre" >> semiSep1' acsl 
---inv = reserved' "inv" >> semiSep1' acsl
-
---posn = reserved' "posn" >> semiSep1' acsl 
-
---pose = reserved' "pose" >> semiSep1' acsl
-
-
-decls = many decl
-
-decl =
-    try(decAtrib)
-    <|>
-    decSimples
-
-decSimples = do {
-            id <- identifier';
-            return $ Sdec id
-}
-
-decAtrib = do {
-    id <- identifier';
-    op <- operator';
-    v <- expr
-
-    if op == '=' then return $ Edec id v
-        else fail "Wrong operator!"
-}
-
--}
