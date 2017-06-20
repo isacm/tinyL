@@ -1,0 +1,6 @@
+pre true;
+
+x = 5 ;
+
+posn true;
+pose true;

@@ -1,0 +1,8 @@
+pre x > 10 && y > 1;
+
+x = 11;
+y = 2;
+z = x + y;
+
+posn z > 11;
+pose true;

@@ -1,49 +1,58 @@
 module TinyL where
 
-type VarName = String
+import AST
+import Grammar
+import VCGen
+import qualified Data.Set as Set
+import Z3.Monad
+import Control.Monad.Trans
 
-data TinyL = TinyL Acsl [Stmt] Acsl Acsl 
-           deriving Show
+lstPrettyPrint:: [BoolExpr] -> String
+lstPrettyPrint [] = ""
+lstPrettyPrint (x:xs) = "\n" ++ prettyPrint x ++ "\n" ++ lstPrettyPrint xs
 
-data Acsl = Old VarName RelBinOp IntExpr
-          | Prop BoolExpr
-          deriving Show
+prettyPrint :: BoolExpr -> String
+prettyPrint (BoolConst b) = show b
+prettyPrint (Not exp) = "! (" ++ prettyPrint exp ++ " )"
+prettyPrint (BoolBinary op exp1 exp2) = prettyPrint exp1 ++ ppBoolOp op ++ prettyPrint exp2
+prettyPrint (RelationalBinary op exp1 exp2) = ppIntExpr exp1 ++ ppRelOp op ++ ppIntExpr exp2
 
-data Stmt = Attrib VarName IntExpr
-          | If BoolExpr [Stmt]
-          | TryCatch [Stmt] [Stmt]
-          | Throw
-          | IfThenElse BoolExpr [Stmt] [Stmt]
-          | Loop BoolExpr Acsl [Stmt]
-          deriving Show
+ppIntExpr :: IntExpr -> String
+ppIntExpr (Var s) = s
+ppIntExpr (IntConst i) = show i
+ppIntExpr (Neg exp) = "- " ++ ppIntExpr exp
+ppIntExpr (IntBinary op exp1 exp2) = ppIntExpr exp1 ++ ppIntOp op ++ ppIntExpr exp2
 
-data IntExpr = Var String
-             | IntConst Integer
-             | Neg IntExpr
-             | IntBinary IntBinOp IntExpr IntExpr
-             deriving Show
+ppBoolOp :: BoolBinOp -> String
+ppBoolOp And = " && "
+ppBoolOp Or = " || "
+ppBoolOp Implies = " ==> "
 
+ppIntOp :: IntBinOp -> String
+ppIntOp Add = " + "
+ppIntOp Sub = " - "
+ppIntOp Mul = " * "
+ppIntOp Div = " / "
 
-data BoolExpr = BoolConst Bool
-              | Not BoolExpr
-              | BoolBinary BoolBinOp BoolExpr BoolExpr
-              | RelationalBinary RelBinOp IntExpr IntExpr
-              deriving Show
+ppRelOp :: RelBinOp -> String
+ppRelOp AST.GT = " > "
+ppRelOp AST.LT = " < "
+ppRelOp AST.GTE = " >= "
+ppRelOp AST.LTE = " <= "
+ppRelOp AST.EQ = " == "
+ppRelOp AST.Diff = " != "
 
-data IntBinOp = Add
-            | Sub
-            | Mul
-            | Div 
-            deriving Show
+script :: TinyL -> Z3 [Result]
+script x = do
+    vc <- vcs x
+    mapM (\l -> reset >> assert l >> check) vc
 
-data BoolBinOp = And
-               | Or
-               deriving Show
+main :: IO ()
+main = do 
+    putStrLn "Nome do ficheiro a dar parse:"
+    f <- getLine
+    tiny <- parseFile f
+    putStrLn $ lstPrettyPrint (Set.toList $ vcg tiny)
 
-data RelBinOp = GT
-              | LT
-              | GTE
-              | LTE
-              | EQ
-              | Diff
-              deriving Show
+    result <- evalZ3 $ script tiny
+    mapM_ print result

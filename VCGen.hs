@@ -1,28 +1,19 @@
 module VCGen where
 
-import TinyL
+import AST
 import Z3.Monad
+import qualified Data.Set as Set
 
-{-
-    Perguntar:
-        -> Como faço a substituição Q[x/e] ??
-            « wp [Attrib nome valor] posCond
-        
-        Pela Def. dos slides:
-            « wp :: [Stmt] -> AST -> z3 AST
-        
-        Se wp :: [Stmt] -> Acsl -> z3 AST era fácil:
-            « subACSL :: Acsl -> String -> IntExpr -> Acsl
+vcs :: MonadZ3 z3 => TinyL -> z3 [AST]
+vcs = sequence . vcg2Z3 . vcg
 
-        -> Como definir Old v op iexp ??
+vcs' :: MonadZ3 z3 => TinyL -> z3 AST
+vcs' t = vcs t >>= mkAnd
 
-        -> intExprToZ3 (Var s) está bem ??
-            « intExprToZ3 (Var s) = mkFreshIntVar s
--}
+vcg2Z3 ::MonadZ3 z3 => Set.Set BoolExpr -> [z3 AST]
+vcg2Z3 s | Set.null s = []
+         | otherwise = map boolExprToZ3 (Set.toList s)
 
---acslToZ3 Old v op iexp = undefined
-
-acslToZ3 (Prop bexp) = boolExprToZ3 bexp
 
 intExprToZ3 (Var s) = mkFreshIntVar s
 
@@ -52,6 +43,7 @@ boolExprToZ3 (BoolBinary op exp1 exp2) = do {
     case op of
         And -> mkAnd [zexp1, zexp2]
         Or -> mkOr [zexp1, zexp2]
+        _ -> mkImplies zexp1 zexp2
 }
 
 boolExprToZ3 (RelationalBinary op exp1 exp2) = do {
@@ -59,117 +51,38 @@ boolExprToZ3 (RelationalBinary op exp1 exp2) = do {
     zexp2 <- intExprToZ3 exp2;
 
     case op of
-        TinyL.GT -> mkGt zexp1 zexp2
-        TinyL.LT -> mkLt zexp1 zexp2
-        TinyL.GTE -> mkGe zexp1 zexp2
-        TinyL.LTE -> mkLe zexp1 zexp2
-        TinyL.EQ -> mkEq zexp1 zexp2
-        TinyL.Diff -> mkEq zexp1 zexp2 >>= mkNot
+        AST.GT -> mkGt zexp1 zexp2
+        AST.LT -> mkLt zexp1 zexp2
+        AST.GTE -> mkGe zexp1 zexp2
+        AST.LTE -> mkLe zexp1 zexp2
+        AST.EQ -> mkEq zexp1 zexp2
+        AST.Diff -> mkEq zexp1 zexp2 >>= mkNot
 }
 
---vcg:: TinyL -> z3 AST
-vcg (TinyL p s q1 q2) = do {
-    sort <- mkBoolSort;
-    set <- mkEmptySet sort;
-    p' <- acslToZ3 p;
-    q1' <- acslToZ3 q1;
-    q' <- wp s q1';
-    imp <- mkImplies p' q';
-    s' <- mkSetAdd set imp;
-    s2 <- vcaux s q1';
-    
-    mkSetUnion [s', s2]
-}
+vcg :: TinyL -> Set.Set BoolExpr
+vcg (TinyL p s q1 q2) = Set.union  (Set.singleton (BoolBinary Implies p (wp s q1 q2))) (vcaux s q1 q2)
 
---vcaux:: [Stmt] -> Acsl -> z3 AST -- não pode ser!
---vcaux:: [Stmt] -> AST -> z3 AST
-vcaux [] q = mkBoolSort >>= mkEmptySet
+vcaux :: [Stmt] -> BoolExpr -> BoolExpr -> Set.Set BoolExpr
+vcaux [] q1 q2 = Set.empty
+vcaux [Throw] q1 q2 = Set.empty
+vcaux [Attrib v i] q1 q2 = Set.empty
+vcaux [TryCatch s1 s2] q1 q2 = Set.union (vcaux s1 q1 q2) (vcaux s2 q1 q2)
+vcaux [If b s] q1 q2 = vcaux s q1 q2
+vcaux [IfThenElse b s1 s2] q1 q2 = Set.union (vcaux s1 q1 q2) (vcaux s2 q1 q2)
+vcaux [Loop b i s] q1 q2 = Set.union (Set.fromList ([BoolBinary Implies (BoolBinary And i b) (wp s i q2),
+                            BoolBinary Implies (BoolBinary And i (Not b)) q1])) (vcaux s i q2)
 
-vcaux [Attrib v i] q = mkBoolSort >>= mkEmptySet
+vcaux (s1:sn) q1 q2 = Set.union (vcaux [s1] (wp sn q1 q2) q2) (vcaux sn q1 q2)
 
-vcaux [If b s] q = vcaux s q
-
-vcaux [IfThenElse b s1 s2] q = do {
-    v1 <- vcaux s1 q;
-    v2 <- vcaux s2 q;
-
-    mkSetUnion [v1, v2]
-}
-
-vcaux [Loop b i s] q = do {
-    b' <- boolExprToZ3 b;
-    i' <- acslToZ3 i;
-    --q' <- acslToZ3 q;
-    nb' <- mkNot b';
-    w <- wp s i';
-    sort <- mkBoolSort;
-    set <- mkEmptySet sort;
-
-    bi <- mkAnd [b', i'];
-    nbi <- mkAnd [nb', i'];
-    imp1 <- mkImplies bi w;
-    imp2 <- mkImplies nbi q;
-
-    set' <- mkSetAdd set imp1;
-    set''<- mkSetAdd set' imp2;
-
-    vcs <- vcaux s i'; -- para i ser AST
-
-    mkSetUnion [set'', vcs]
-}
-
-vcaux (s1:sn) q = do {
-    w <- wp sn q;
-    v1 <- vcaux [s1] w;
-    v2 <- vcaux sn q;
-    sort <- mkBoolSort;
-    set1 <- mkEmptySet sort;
-    set2 <- mkEmptySet sort;
-    r1 <- mkSetAdd set1 v1;
-    r2 <- mkSetAdd set2 v2;
-
-    mkSetUnion [r1, r2]
-}
-
---wp:: [Stmt] -> Acsl -> z3 AST -- não pode ser!
---wp:: [Stmt] -> AST -> z3 AST
-wp [] q = return q  --acslToZ3 q
-
-{-
-wp [Attrib v i] q = do
-    let q' = subACSL q v i --quero o teu var de i
-    acslToZ3 q'
--}
-
-wp [If b s] q = do {
-    b' <- boolExprToZ3 b;
-    w <- wp s q;
-    mkImplies b' w
-}
-
-wp [IfThenElse b s1 s2] q = do {
-    b' <- boolExprToZ3 b;
-    nb <- mkNot b';
-    w1 <- wp s1 q;
-    w2 <- wp s2 q;
-    imp1 <- mkImplies b' w1;
-    imp2 <- mkImplies nb w2;
-
-    mkAnd [imp1, imp2]
-
-}
-
-wp [Loop b i s] q = acslToZ3 i
-
-wp (s1:sn) q = do {
-    w <- wp sn q;
-    wp [s1] w
-}
-
-
-subACSL :: Acsl -> String -> IntExpr -> Acsl
-subACSL (Prop bexp) x e = Prop (subBexp bexp x e)
-subACSL exp x e = exp
+wp:: [Stmt] -> BoolExpr -> BoolExpr -> BoolExpr
+wp [] q1 q2 = q1
+wp [Throw] q1 q2 = q2
+wp [Attrib x e] q1 q2 = subBexp q1 x e
+wp [TryCatch s1 s2] q1 q2 = (wp s1 q1 (wp s2 q1 q2)) 
+wp [If b s] q1 q2 = BoolBinary Implies b (wp s q1 q2)
+wp [IfThenElse b s1 s2] q1 q2 = BoolBinary And (BoolBinary Implies b (wp s1 q1 q2)) (BoolBinary Implies (Not b) (wp s2 q1 q2))
+wp [Loop b i s] q1 q2 = i
+wp (s1:sn) q1 q2 = (wp [s1] (wp sn q1 q2) q2)
 
 subBexp :: BoolExpr -> String -> IntExpr -> BoolExpr
 subBexp (RelationalBinary op exp1 exp2) x e = RelationalBinary op (substitute exp1 x e) (substitute exp2 x e)

@@ -6,10 +6,10 @@ import Data.Functor.Identity
 import Text.ParserCombinators.Parsec.Expr
 import Control.Monad
 import System.IO
-import TinyL
+import AST
 
 reservedNames' = ["pre", "inv", "posn", "pose", "if", "then",
-                    "else", "while", "do", "true", "false",
+                    "else", "while", "true", "false",
                     "throw", "try", "catch", "old"]
 
 reservedOps = ["+", "*", "/", "=", "==", "!=", "&&", "||",
@@ -37,7 +37,6 @@ reserved' = P.reserved lexer
 reservedOp' = P.reservedOp lexer
 operator' = P.operator lexer
 integer' = P.integer lexer
-lexeme' = P.lexeme lexer
 whiteSpace' = P.whiteSpace lexer
 parens' = P.parens lexer
 braces' = P.braces lexer
@@ -72,13 +71,12 @@ tinyL = do{
 
 pre = do{
     reserved' "pre";
-    a <- acsl;
+    a <- boolexp;
     semi';
 
     return a
 }
 
---statments = semiSep' statment
 statments = many statment
 
 statment = atrib 
@@ -140,7 +138,6 @@ throw = do {
 loop = do{
     reserved' "while";
     b <- parens' boolexp;
-    --reserved' "do";
     symbol' "{";
     l <- inv;
     s <- statments;
@@ -172,16 +169,16 @@ relexp = do{
     return $ RelationalBinary op i1 i2
 }
 
-relation = (reservedOp' ">" >> return TinyL.GT)
-         <|> (reservedOp' "<" >> return TinyL.LT)
-         <|> (reservedOp' ">=" >> return TinyL.GTE)
-         <|> (reservedOp' "<=" >> return TinyL.LTE)
-         <|> (reservedOp' "==" >> return TinyL.EQ)
-         <|> (reservedOp' "!=" >> return TinyL.Diff)
+relation = (reservedOp' ">" >> return AST.GT)
+         <|> (reservedOp' "<" >> return AST.LT)
+         <|> (reservedOp' ">=" >> return AST.GTE)
+         <|> (reservedOp' "<=" >> return AST.LTE)
+         <|> (reservedOp' "==" >> return AST.EQ)
+         <|> (reservedOp' "!=" >> return AST.Diff)
 
 posn = do{
     reserved' "posn";
-    a <- acsl;
+    a <- boolexp;
     semi';
 
     return a
@@ -189,7 +186,7 @@ posn = do{
 
 pose = do{
     reserved' "pose";
-    a <- acsl;
+    a <- boolexp;
     semi';
 
     return a
@@ -197,29 +194,10 @@ pose = do{
 
 inv = do{
     reserved' "inv";
-    a <- acsl;
+    a <- boolexp;
     semi';
 
     return a
-}
-
-acsl = old
-       <|>
-       propbool
-
-old = do {
-    reserved' "old";
-    v <- parens' identifier';
-    r <- relation;
-    i <- intexp;
-
-    return $ Old v r i
-}
-
-propbool = do {
-    b <- boolexp;
-    return $ Prop b
-
 }
 
 parseFile :: String -> IO TinyL

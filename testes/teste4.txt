@@ -1,0 +1,22 @@
+pre q == 0;
+
+r = x;
+q = 0;
+
+try {
+	while (y <= r) {
+		inv y <= r;
+		r = r-y;
+		q = q+1;
+
+		if (q > 10) then throw;
+	}
+
+	res = 0;
+}
+catch {
+	res = 1;
+}
+
+posn res == 0;
+pose res == 1;
