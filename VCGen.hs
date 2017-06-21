@@ -5,7 +5,9 @@ import Z3.Monad
 import qualified Data.Set as Set
 
 vcs :: MonadZ3 z3 => TinyL -> z3 [AST]
-vcs = sequence . vcg2Z3 . vcg
+vcs = sequence . negVcs . vcg2Z3 . vcg
+--vcs = sequence . vcg2Z3 . negBoolExp . vcg
+
 
 vcs' :: MonadZ3 z3 => TinyL -> z3 AST
 vcs' t = vcs t >>= mkAnd
@@ -14,6 +16,10 @@ vcg2Z3 ::MonadZ3 z3 => Set.Set BoolExpr -> [z3 AST]
 vcg2Z3 s | Set.null s = []
          | otherwise = map boolExprToZ3 (Set.toList s)
 
+negBoolExp exps = Set.map (\b -> (Not b)) exps 
+
+negVcs :: MonadZ3 z3 => [z3 AST] -> [z3 AST]
+negVcs l = map (\x -> x >>= mkNot) l
 
 intExprToZ3 (Var s) = mkFreshIntVar s
 

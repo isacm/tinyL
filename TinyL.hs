@@ -47,6 +47,15 @@ script x = do
     vc <- vcs x
     mapM (\l -> reset >> assert l >> check) vc
 
+f Sat = "Invalid"
+f Unsat = "Valid"
+f Undef = "Undef"
+
+g x = map f x
+
+h [] = ""
+h (x:xs) = x ++ "\n" ++ h xs
+
 main :: IO ()
 main = do 
     putStrLn "Nome do ficheiro a dar parse:"
@@ -55,4 +64,5 @@ main = do
     putStrLn $ lstPrettyPrint (Set.toList $ vcg tiny)
 
     result <- evalZ3 $ script tiny
-    mapM_ print result
+
+    putStrLn $ (h.g) result
